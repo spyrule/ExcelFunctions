@@ -1,0 +1,346 @@
+Attribute VB_Name = "Module1"
+
+Sub ShowUserModuleUF()
+    'Display The DataEntry UserForm.
+    DataEntryNew.Show False
+End Sub
+
+Sub ShowCheckRefUF()
+    'Display The DataEntry UserForm.
+    CheckRefData.Show False
+End Sub
+
+Function FormatPhoneNumber(ThePhNumber As String) As String
+' this function cleans up any North American phone number format
+' to standard format (+99) 999-999-9999 or (999)-999-9999 can also include extensions with x###
+' works with almost all phone number formats stored in text
+
+Dim ReturnNumber As String
+Dim ext As String
+Dim extensionStart As Integer
+
+extensionStart = 0 ' if an extension is present, it begins at this location
+
+For i = 1 To Len(ThePhNumber)
+    If Asc(Mid(ThePhNumber, i, 1)) >= Asc("0") And Asc(Mid(ThePhNumber, i, 1)) <= Asc("9") Then
+        ReturnNumber = ReturnNumber + Mid(ThePhNumber, i, 1)
+    End If
+    If LCase(Mid(ThePhNumber, i, 1)) = "x" Then
+        extensionStart = Len(ReturnNumber) + 1
+        ReturnNumber = ReturnNumber + Mid(ThePhNumber, i, 1)
+    End If
+Next
+
+If extensionStart > 0 Then
+    ' if an extention is present, separate it out
+    ext = Right(ReturnNumber, Len(ReturnNumber) - extensionStart + 1)
+    ReturnNumber = Left(ReturnNumber, extensionStart - 1)
+End If
+
+If Len(ReturnNumber) > 10 Then
+    ' format for country code as well
+    FormatPhoneNumber = Format(ReturnNumber, "(+#) 000-000-0000 ")
+Else
+    FormatPhoneNumber = Format(ReturnNumber, "(000)-000-0000 ")
+End If
+
+If extensionStart > 0 Then
+    ' append the extension if present
+    FormatPhoneNumber = FormatPhoneNumber + Format(ext, "  x#")
+End If
+
+End Function
+
+
+Sub CheckColumns()
+
+Dim shtImport As Worksheet
+Dim shtMain As Worksheet
+Set shtImport = ThisWorkbook.Sheets("MainData")
+Set shtMain = ThisWorkbook.Sheets("Import")
+
+'From Main to Data
+Dim rngImpTitles As Range
+Set rngImpTitles = shtImport.Rows(1)
+Dim rngImpNames As Range
+Set rngImpNames = shtImport.Columns(1)
+
+Dim CopyColumn As Long
+Dim CopyRow As Long
+Dim foundRow As Long
+Dim foundCol As Long
+
+On Error Resume Next
+'for each column in row 1 of import sheet
+For CopyColumn = 2 To shtMain.Cells(1, shtMain.Columns.Count).End(xlToLeft).Column
+MsgBox (CopyColumn)
+    foundCol = rngImpTitles.Find(shtMain.Cells(1, CopyColumn).Value2).Column
+    If Err.Number <> 0 Then
+        MsgBox "Not such a col title in importsheet for " & vbNewLine & _
+                        shtMain.Cells(1, CopyColumn)
+        Err.Clear
+        GoTo skip_title
+    End If
+
+
+    For CopyRow = 2 To shtMain.Cells(shtMain.Rows.Count, 1).End(xlUp).Row
+        foundRow = rngImpNames.Find(shtMain.Cells(CopyRow, 1)).Row
+        If Err.Number <> 0 Then
+            MsgBox "Not such a row name in importsheet for " & vbNewLine & _
+                        shtMain.Cells(CopyRow, 1)
+            Err.Clear
+            GoTo skip_row
+        End If
+
+            If Len(shtMain.Cells(CopyRow, CopyColumn)) <> 0 Then
+                    shtMain.Cells(CopyRow, CopyColumn).Copy shtImport.Cells(foundRow, foundCol)
+            End If
+
+skip_row:
+    Next CopyRow
+skip_title:
+Next CopyColumn
+
+End Sub
+
+Public Function HasValue(text_box As Object) As Boolean
+    HasValue = (Len(Trim(text_box.Value)) > 0)
+End Function
+
+Public Function HasNoValue(text_box As Object) As Boolean
+    HasNoValue = (Len(Trim(text_box.Value)) <= 0)
+End Function
+
+Public Function IsValidEmail(TextBoxName As Object) As Boolean
+'If TextBoxName = vbNullString Then Exit Sub
+If Not Application.OperatingSystem Like "*Mac*" Then
+        'I am Windows, skip check on OSX, as regexp doesn't exist on OSX
+    Dim oRegEx As Object
+    Set oRegEx = CreateObject("VBScript.RegExp")
+    With oRegEx
+        '.Pattern = "^[\w-\.]{1,}\@([\da-zA-Z-]{1,}\.){1,}[\da-zA-Z-]{2,3}$"
+        .Pattern = "^[\w-\.]+@[\w-]+\.+[A-Za-z]{2,4}$"
+        IsValidEmail = .test(TextBoxName.Value)
+    End With
+    Set oRegEx = Nothing
+End If
+End Function
+
+Public Function CopyUserFormToCompanyData(WhichUserForm As Object, WhichWorkSheetDest As Variant, StartControl As Long, EndControl As Long)
+
+  'Declare Init variables
+    Dim lRow2 As Long
+    Dim lCol2 As Long
+    Dim wsCompanyData As Worksheet
+    Dim ArrayCCValues() As Variant
+    Dim cControls As Control
+    Dim cntControls As Long
+    Dim cControlRange As Long
+    
+    
+' Populate Vars with initial values
+    Set wsCompanyData = Worksheets(WhichWorkSheetDest)
+    cntControls = 0
+    
+' Find the last row count for the label names
+    lRow2 = wsCompanyData.Range("A" & Rows.Count).End(xlUp).Row
+    lRow2 = lRow2 + 1
+' Find the total COLUMN count that maindata contains (this is dynamic incase we add fields in the future).
+    lCol2 = wsCompanyData.Cells(1, Columns.Count).End(xlToLeft).Column
+    lCol2 = lCol2 - 1 'Remove the timestamp column
+    
+' This populates an array with all of the textbox values
+   On Error Resume Next
+    For cControlRange = StartControl To EndControl
+        Set cControls = WhichUserForm.Controls("TextBox" & cControlRange)
+        If Err = 0 Then
+            cntControls = cntControls + 1
+            ReDim Preserve ArrayCCValues(1 To cntControls)
+            ArrayCCValues(cntControls) = cControls.Value
+        Else
+            Err.Clear
+        End If
+    Next cControlRange
+    On Error GoTo 0
+     
+If ArrayCCValues(1) = "" Then
+    Else
+        wsCompanyData.Range("A" & lRow2).Resize(1, lCol2) = ArrayCCValues
+End If
+
+End Function
+
+
+'*********************************************************************************************
+
+Public Function CopyUserFormToMainData(WhichUserForm As Object)
+'Declare Init variables
+    Dim lRow2 As Long
+    Dim lCol2 As Long
+    
+    Dim wsMainData As Worksheet
+    Dim wsRefData As Worksheet
+    
+    Dim ArrayCCValues() As Variant
+    
+    Dim cControls As Control
+    Dim cntControls As Long
+    
+' Populate Vars with initial values
+    Set wsRefData = Worksheets("REFData")
+    Set wsMainData = Worksheets("MainData")
+
+' Find the last row count for the label names
+    lRow2 = wsMainData.Range("A" & Rows.Count).End(xlUp).Row
+    lRow2 = lRow2 + 1
+' Find the total COLUMN count that maindata contains (this is dynamic incase we add fields in the future).
+    lCol2 = wsMainData.Cells(1, Columns.Count).End(xlToLeft).Column
+    lCol2 = lCol2 - 1 'Remove the timestamp column
+    
+' This populates an array with all of the textbox values
+    For Each cControls In WhichUserForm.Controls
+
+        If TypeName(cControls) = "TextBox" Then
+        ReDim Preserve ArrayCCValues(cntControls)
+             ArrayCCValues(cntControls) = cControls.Value
+             cntControls = cntControls + 1
+        End If
+     Next cControls
+     
+If ArrayCCValues(0) = "" Then
+    Else
+        wsMainData.Range("A" & lRow2).Resize(1, lCol2) = ArrayCCValues
+End If
+
+End Function
+
+Public Function CopyMainDataHeaderColumns(WhichDestinationForm As Object)
+'Declare Init variables
+    Dim lRow2 As Long
+    Dim lCol2 As Long
+    
+    Dim wsMainData As Worksheet
+    Dim wsRefData As Worksheet
+    
+    Dim ArrayCCValues() As Variant
+    
+    Dim cControls As Control
+    Dim cntControls As Long
+    
+' Populate Vars with initial values
+    Set wsRefData = Worksheets("REFData")
+    Set wsMainData = Worksheets("MainData")
+
+' Find the last row count for the label names
+    lRow2 = wsMainData.Range("A" & Rows.Count).End(xlUp).Row
+    lRow2 = lRow2 + 1
+' Find the total COLUMN count that maindata contains (this is dynamic incase we add fields in the future).
+    lCol2 = wsMainData.Cells(1, Columns.Count).End(xlToLeft).Column
+    lCol2 = lCol2 - 1 'Remove the timestamp column
+    
+' This populates an array with all of the textbox values
+    For Each cControls In WhichUserForm.Controls
+
+        If TypeName(cControls) = "TextBox" Then
+        ReDim Preserve ArrayCCValues(cntControls)
+             ArrayCCValues(cntControls) = cControls.Value
+             cntControls = cntControls + 1
+        End If
+     Next cControls
+     
+If ArrayCCValues(0) = "" Then
+    Else
+        wsMainData.Range("A" & lRow2).Resize(1, lCol2) = ArrayCCValues
+End If
+
+End Function
+
+
+Public Function CopyByHeader()
+Dim wsOrigin As Worksheet
+Dim wsDest As Worksheet
+Dim nCopyRow As Long
+Dim nPasteRow As Long
+Dim rngFnd As Range
+Dim rngDestSearch As Range
+Dim cel As Range
+
+Const ORIGIN_ROW_HEADERS = 1
+Const DEST_ROW_HEADERS = 1
+
+
+Set wsOrigin = Worksheets("MainData")
+Set wsDest = Worksheets("")
+
+nCopyRow = wsMainData.ListObjects("Table1").HeaderRowRange.Select
+nPasteRow = wsDest.Cells(Rows.Count, 1).End(xlUp).Row + 1
+
+Set rngDestSearch = Intersect(wsDest.UsedRange, wsDest.Rows(DEST_ROW_HEADERS))
+
+For Each cel In Intersect(wsOrigin.UsedRange, wsOrigin.Rows(ORIGIN_ROW_HEADERS))
+    On Error Resume Next
+        Set rngFnd = rngDestSearch.Find(cel.Value)
+
+        If rngFnd Is Nothing Then
+            'Do Nothing as Header Does not Exist
+        Else
+            wsDest.Cells(nPasteRow, rngFnd.Column).Value = wsOrigin.Cells(nCopyRow, cel.Column).Value
+        End If
+    On Error GoTo 0
+
+    Set rngFnd = Nothing
+Next cel
+End Function
+
+Public Function ResetUserForm(WhichUserForm As Object, ControlType As String, MultiPageYN As Boolean, WhichMultiPage As Control, MultiPageWhichPage As Long)
+' This button resets the Client Capture Userform entry fields.
+Dim contr As Control
+
+For Each contr In WhichUserForm.Controls
+    If TypeName(contr) = ControlType Then
+        contr.Value = ""
+    End If
+Next
+
+If MultiPageYN = True Then
+        WhichMultiPage.Value = MultiPageWhichPage
+    Else
+End If
+
+End Function
+
+Public Function SearchForCellValue(SearchTerm As String, WhichSheet As String, SearchHeader As Boolean)
+
+Dim tsCell As Range
+
+' This searches all of the cells for whatever search term is requested, and then retrieves the column number that is resides at.
+
+    If SearchHeader = False Then
+        Set tsCell = Sheets(WhichSheet).Cells.Find(What:=SearchTerm, LookIn:=xlValues, _
+        LookAt:=xlWhole, SearchDirection:=xlNext, MatchCase:=False, SearchFormat:=False)
+    Else
+        Set tsCell = Sheets(WhichSheet).Rows(1).Find(What:=SearchTerm, LookIn:=xlValues, _
+        LookAt:=xlWhole, SearchOrder:=xlByRows, SearchDirection:=xlNext, _
+        MatchCase:=False, SearchFormat:=False)
+    End If
+
+
+    If Not tsCell Is Nothing Then
+      Set SearchForCellValue = tsCell
+    End If
+
+End Function
+
+Public Function GetSettingValue(WhichSetting As String, WhichSheet As String)
+Dim SetColVal As Long
+Dim SetRowVal As Long
+Dim SetValue As Object
+
+Set SetValue = SearchForCellValue(WhichSetting, WhichSheet, True)
+
+ SetColVal = SetValue.Column
+ SetRowVal = SetValue.Row + 1
+ 
+ GetSettingValue = Worksheets(WhichSheet).Cells(SetRowVal, SetColVal).Value
+
+End Function
